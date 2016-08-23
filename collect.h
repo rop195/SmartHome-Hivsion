@@ -54,6 +54,7 @@ message_h message_head;
 uint8_t Cloud_Code[4];                 //云平台厂商代码
 uint8_t Username[32];                  //用户名
 uint8_t Password[16];                  //密码
+uint8_t AppUserID[16];                 //应用云平台端的用户账号
 uint32_t SessionId;
 uint8_t passwd[16];
 uint8_t Timestamp[6];

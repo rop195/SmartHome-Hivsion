@@ -31,6 +31,7 @@ struct sockaddr_in socket_server_addr,socket_send_addr,socket_client_addr;
 int server_fd, send_fd, client_fd;
 int ConnectStat = TCP_DISCONNECT;
 
+uint8_t AppUserID[16];                 //应用云平台端的用户账号
 uint8_t Equip_Id[16];                  //设备ID
 uint8_t Username[32];                  //用户名
 uint8_t Password[16];                  //密码
@@ -396,6 +397,7 @@ int process_login()
 	strcpy(message_login.Cloud_Code, Cloud_Code); 
 	strcpy(message_login.Username, Username); 
 	strcpy(message_login.Password, Password); 
+	strcpy(message_login.AppUserID, AppUserID);
 
 	memset( &message_head, 0, sizeof(message_h));	  //设置消息头
 	strcpy(message_head.Term_Code,Term_Code);
@@ -585,12 +587,18 @@ void para_init(void)
 	strcpy(Cloud_Code, "3214"); 
 	strcpy(Username, "myname"); 
 	strcpy(Password, "mypassword");
+	strcpy(AppUserID, "myAppUserID");
 	strcpy(Term_Code, "321409000000");
 	Master_Port = 20000;
 	SessionId = 1;
 	TP_Interval = 50;
 	HM_Interval = 50;
 	AIR_Interval = 60;
+	Video_IP[0] = 192;
+	Video_IP[1] = 168;
+	Video_IP[2] = 0;
+	Video_IP[3] = 113;
+	Video_Port = 8800;
 	return;
 }
 
@@ -620,8 +628,9 @@ int main()
 	/* 创建客户端TCP套接口 */
 	bzero(&socket_send_addr, sizeof(socket_send_addr));
 	socket_send_addr.sin_family = AF_INET;
-//	socket_send_addr.sin_addr = *((struct in_addr *)host->h_addr);
-	socket_send_addr.sin_addr.s_addr = inet_addr("120.25.152.19");
+	socket_send_addr.sin_addr = *((struct in_addr *)host->h_addr);
+//	socket_send_addr.sin_addr.s_addr = inet_addr("120.25.152.19");
+//	socket_send_addr.sin_addr.s_addr = inet_addr("192.168.0.128");
 //	socket_send_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	socket_send_addr.sin_port = htons(Master_Port);
 

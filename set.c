@@ -222,7 +222,7 @@ void set_base(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -271,7 +271,7 @@ void set_net(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -318,7 +318,7 @@ void set_intf(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -359,7 +359,7 @@ void set_ntp(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -398,7 +398,7 @@ void set_pkey(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -438,7 +438,7 @@ void set_interval(int client_fd)
 
 	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
 	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
-	message_resp.SessionId = SessionId;
+	message_resp.SessionId = message->SessionId;
 	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
 	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
 	
@@ -451,6 +451,7 @@ void query_base(int client_fd)
 	printf("query_base\n");
 	write_log("query_base\n");
 
+	message_base *message_recv = (message_base *)buffer;
 	message_base message;
 	memset( &message, 0, sizeof(message));
 
@@ -458,7 +459,7 @@ void query_base(int client_fd)
 	memcpy( message.Term_Desc, Term_Desc, sizeof(Term_Desc));    //终端描述
 	memcpy( message.Addr_Desc, Addr_Desc, sizeof(Addr_Desc));    //地点信息
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
@@ -481,6 +482,7 @@ void query_net(int client_fd)
 	printf("query_net\n");
 	write_log("query_net\n");
 
+	message_net *message_recv = (message_net *)buffer;
 	message_net message;
 	memset( &message, 0, sizeof(message));
 
@@ -497,7 +499,7 @@ void query_net(int client_fd)
 	memcpy( message.DNS1, DNS1, sizeof(DNS1));    //DNS1
 	memcpy( message.DNS2, DNS2, sizeof(DNS2));    //DNS2
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
@@ -520,6 +522,7 @@ void query_intf(int client_fd)
 	printf("query_intf\n");
 	write_log("query_intf\n");
 
+	message_intf *message_recv = (message_intf *)buffer;
 	message_intf message;
 	memset( &message, 0, sizeof(message));
 
@@ -534,7 +537,7 @@ void query_intf(int client_fd)
 	message.Resend_Num = Resend_Num;                        //Resend_Num
 	message.Timeout = Timeout;                              //Timeout
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
@@ -557,6 +560,7 @@ void query_ntp(int client_fd)
 	printf("query_ntp\n");
 	write_log("query_ntp\n");
 
+	message_ntp *message_recv = (message_ntp *)buffer;
 	message_ntp message;
 	memset( &message, 0, sizeof(message));
 
@@ -565,7 +569,7 @@ void query_ntp(int client_fd)
 	message.Sync_Period = NTP_Sync_Period;                    //Sync_Period
 	message.Enable_Flag = NTP_Enable_Flag;                    //Enable_Flag
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
@@ -587,13 +591,15 @@ void query_pkey(int client_fd)
 	printf("query_pkey\n");
 	write_log("query_pkey\n");
 
+	message_pkey *message_recv = (message_pkey *)buffer;
+
 	message_pkey message;
 	memset( &message, 0, sizeof(message));
 
 	message.Algorithm_id = Algorithm_id;
 	memcpy( message.Key, Key, sizeof(Key));    //终端密码
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
@@ -615,13 +621,14 @@ void query_videosource(int client_fd)
 	printf("query_videosource\n");
 	write_log("query_videosource\n");
 
+	message_videosource *message_recv = (message_videosource *)buffer;
 	message_videosource message;
 	memset( &message, 0, sizeof(message));
 
 	message.Source_Port = Video_Port;
 	memcpy( message.Source_IP, Video_IP, sizeof(Video_IP));    //终端密码
 
-	message.SessionId = SessionId;
+	message.SessionId = message_recv->SessionId;
 	strcpy(message.message_head.Term_Code,Term_Code);
 	message.message_head.Frame_Head = 0xAAFF;
 	message.message_head.Major_Ver = 0;
