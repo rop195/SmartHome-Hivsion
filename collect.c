@@ -18,6 +18,7 @@
 #include "collect.h"
 #include "set.h"
 #include "crc32.h"
+#include "fileop.h"
 
 
 #define BACKLOG 5                //定义侦听队列长度 
@@ -30,6 +31,7 @@ struct sockaddr_in socket_server_addr,socket_send_addr,socket_client_addr;
 int server_fd, send_fd, client_fd;
 int ConnectStat = TCP_DISCONNECT;
 
+uint8_t Equip_Id[16];                  //设备ID
 uint8_t Username[32];                  //用户名
 uint8_t Password[16];                  //密码
 uint8_t Term_Code[16];                 //终端编码
@@ -63,6 +65,13 @@ uint8_t Algorithm_id;                   //密码算法编号
 uint8_t Key[16];                        //密钥
 uint8_t Cloud_Code[4];                 //云平台厂商代码
 uint32_t SessionId;                    //会话ID
+uint32_t TP_Interval;                  //温度采集周期
+uint32_t HM_Interval;                  //湿度采集周期
+uint32_t AIR_Interval;                 //空气质量采集周期
+uint8_t Video_IP[4];                   //视频源地址
+uint16_t Video_Port;                   //视频端口号
+
+FILE *file_log;
 
 void handle_pipe(int sig);
 void sig_handler( int sig);
@@ -82,9 +91,10 @@ int16_t collect_airqua()            //空气质量
 	return 50;
 }
 
-void *sensor_thread()            //本地传感器采集线程
+void *TempSensor_thread()            //本地温度传感器采集线程
 {	
-        printf ("sensor_thread start;\n");
+        printf ("TempSensor_thread start!\n");
+	write_log("TempSensor_thread start!\n");
 
 	message_sensor sensor;
 	message_h message_head;
@@ -101,35 +111,149 @@ void *sensor_thread()            //本地传感器采集线程
 	sensor.message_head.Serv_Code = SERV_CODE_SENS;
 	sensor.message_head.Serv_Type = SERV_TYPE_DQRY;
 	sensor.message_head.Flags = 0x20;
-	strcpy( sensor.Equip_Id, "12345678");
+	strcpy( sensor.Equip_Id, Equip_Id);
 
        	while(1)
         {
-                sensor.Temp = collect_temp();
-		sensor.Humi = collect_humi();
-		sensor.Airqua = collect_airqua();
+                sensor.Data = collect_temp();
+		sensor.Type = 0;
 
-		sensor.message_head.Total_Len = sizeof(sensor) -26 ;
+		sensor.message_head.Total_Len = sizeof(sensor);
 		sensor.SessionId = SessionId;
-//		strcpy( sensor.Password, Password );
-		sensor.message_head.CRC32 = crc32((uint8_t *)&sensor.message_head.Seq_Id, sizeof(sensor)-8-26);
+		sensor.message_head.CRC32 = crc32((uint8_t *)&sensor.message_head.Seq_Id, sizeof(sensor)-8);
 	
                 pthread_mutex_lock(&sock_mut);
 		if( ConnectStat == TCP_LOGIN )
 		{
 			int size;  
-			size = write(send_fd, &sensor, sizeof(sensor)-26); //发送消息
+			size = write(send_fd, &sensor, sizeof(sensor)); //发送消息
 			if(size<0)
 			{
-				printf("sensor_thread send error!\n");
+				printf("TempSensor_thread send error!\n");
+				write_log("TempSensor_thread send error!\n");
 				ConnectStat == TCP_DISCONNECT;
 			}
 			else
-				printf("sensor_thread send %d!\n",size);
+			{
+				printf("TempSensor_thread send %d℃!\n",sensor.Data);
+				write_log("TempSensor_thread send data!\n");
+			}
 		}
                 pthread_mutex_unlock(&sock_mut);
 
-                sleep(40);
+                sleep(TP_Interval);
+        }
+
+        pthread_exit(NULL);
+}
+
+void *HumiSensor_thread()            //本地湿度传感器采集线程
+{	
+        printf ("HumiSensor_thread start!\n");
+	write_log("HumiSensor_thread start!\n");
+
+	message_sensor sensor;
+	message_h message_head;
+	int err;
+
+	memset( &sensor, 0, sizeof(message_sensor));
+
+	memset( &message_head, 0, sizeof(message_h));	  //设置消息头
+	strcpy(sensor.message_head.Term_Code,Term_Code);
+	sensor.message_head.Frame_Head = 0xAAFF;
+	sensor.message_head.Comm_Type = 0;
+	sensor.message_head.Major_Ver = 0;
+	sensor.message_head.Minor_Ver = 0;
+	sensor.message_head.Serv_Code = SERV_CODE_SENS;
+	sensor.message_head.Serv_Type = SERV_TYPE_DQRY;
+	sensor.message_head.Flags = 0x20;
+	strcpy( sensor.Equip_Id, Equip_Id);
+
+       	while(1)
+        {
+                sensor.Data = collect_humi();
+		sensor.Type = 1;
+
+		sensor.message_head.Total_Len = sizeof(sensor);
+		sensor.SessionId = SessionId;
+		sensor.message_head.CRC32 = crc32((uint8_t *)&sensor.message_head.Seq_Id, sizeof(sensor)-8);
+	
+                pthread_mutex_lock(&sock_mut);
+		if( ConnectStat == TCP_LOGIN )
+		{
+			int size;  
+			size = write(send_fd, &sensor, sizeof(sensor)); //发送消息
+			if(size<0)
+			{
+				printf("HumiSensor_thread send error!\n");
+				write_log("HumiSensor_thread send error!\n");
+				ConnectStat == TCP_DISCONNECT;
+			}
+			else
+			{
+				printf("HumiSensor_thread send %d!\n",sensor.Data);
+				write_log("HumiSensor_thread send data!\n");
+			}
+		}
+                pthread_mutex_unlock(&sock_mut);
+
+                sleep(HM_Interval);
+        }
+
+        pthread_exit(NULL);
+}
+
+void *AirquaSensor_thread()            //本地空气质量传感器采集线程
+{	
+        printf ("AirquaSensor_thread start!\n");
+	write_log("AirquaSensor_thread start!\n");
+
+	message_sensor sensor;
+	message_h message_head;
+	int err;
+
+	memset( &sensor, 0, sizeof(message_sensor));
+
+	memset( &message_head, 0, sizeof(message_h));	  //设置消息头
+	strcpy(sensor.message_head.Term_Code,Term_Code);
+	sensor.message_head.Frame_Head = 0xAAFF;
+	sensor.message_head.Comm_Type = 0;
+	sensor.message_head.Major_Ver = 0;
+	sensor.message_head.Minor_Ver = 0;
+	sensor.message_head.Serv_Code = SERV_CODE_SENS;
+	sensor.message_head.Serv_Type = SERV_TYPE_DQRY;
+	sensor.message_head.Flags = 0x20;
+	strcpy( sensor.Equip_Id, Equip_Id);
+
+       	while(1)
+        {
+                sensor.Data = collect_airqua();
+		sensor.Type = 2;
+
+		sensor.message_head.Total_Len = sizeof(sensor);
+		sensor.SessionId = SessionId;
+		sensor.message_head.CRC32 = crc32((uint8_t *)&sensor.message_head.Seq_Id, sizeof(sensor)-8);
+	
+                pthread_mutex_lock(&sock_mut);
+		if( ConnectStat == TCP_LOGIN )
+		{
+			int size;  
+			size = write(send_fd, &sensor, sizeof(sensor)); //发送消息
+			if(size<0)
+			{
+				printf("AirquaSensor_thread send error!\n");
+				write_log("AirquaSensor_thread send error!\n");
+				ConnectStat == TCP_DISCONNECT;
+			}
+			else
+			{
+				printf("AirquaSensor_thread send %d!\n",sensor.Data);
+				write_log("AirquaSensor_thread send data!\n");
+			}
+		}
+                pthread_mutex_unlock(&sock_mut);
+
+                sleep(AIR_Interval);
         }
 
         pthread_exit(NULL);
@@ -138,6 +262,7 @@ void *sensor_thread()            //本地传感器采集线程
 void *connect_thread()         //链路维护线程
 {
         printf("connect_thread start;\n");
+	write_log("connect_thread start;\n");
 	message_h message_head;
 	int err;
 	char revbuf[100];
@@ -195,7 +320,8 @@ void *connect_thread()         //链路维护线程
 
 		if( ConnectStat == TCP_DISCONNECT )
 		{
-			printf("re-connect\n");
+			printf("re-connect;\n");
+			write_log("re-connect;\n");
 			close(send_fd);
 			send_fd = socket(AF_INET,SOCK_STREAM, 0);
 			while( tcp_connect() )
@@ -246,14 +372,16 @@ int tcp_connect()
 	if ( err == 0 )
 	{	
 		printf("login : connect to server\n");
+		write_log("login : connect to server\n");
 		ConnectStat = TCP_CONNECT;
-		return 0;
+		return SUCCESS;
 	}
 	else
 	{	
 		printf("login : connect error\n");
+		write_log("login : connect error\n");
 		ConnectStat = TCP_DISCONNECT;
-		return -1;
+		return FAILED;
 	}	
 }
 
@@ -299,17 +427,18 @@ int process_login()
 		{
 			SessionId = message_resp->SessionId;
 			ConnectStat = TCP_LOGIN;
-			return 0;
+			return SUCCESS;
 		}
 		else
 		{
 			printf("login : resp error\n"); 
-			return -1;
+			write_log("login : resp error\n");
+			return FAILED;
 		}
 	}
 	else
 	{   
-		return -1;
+		return FAILED;
 	}
 }
 
@@ -338,29 +467,81 @@ void thread_create(void)
         memset(thread, 0, sizeof(thread));
         /*创建线程*/
         if((temp = pthread_create(&thread[0], NULL, connect_thread, NULL)) != 0)
+	{
                 printf("线程connect创建失败\n");
+		write_log("线程connect创建失败\n");
+	}
         else
+	{
                 printf("线程connect被创建\n");
+		write_log("线程connect被创建\n");
+	}
 
-        if((temp = pthread_create(&thread[1], NULL, sensor_thread, NULL)) != 0)
-                printf("线程sensor创建失败\n");
+        if((temp = pthread_create(&thread[1], NULL, TempSensor_thread, NULL)) != 0)
+	{
+                printf("线程TempSensor创建失败\n");
+		write_log("线程TempSensor创建失败\n");
+	}
         else
-                printf("线程sensor被创建\n");
-	
+	{
+                printf("线程TempSensor被创建\n");
+		write_log("线程TempSensor创建失败\n");
+	}
+
+        if((temp = pthread_create(&thread[1], NULL, HumiSensor_thread, NULL)) != 0)
+	{
+                printf("线程HumiSensor创建失败\n");
+		write_log("线程HumiSensor创建失败\n");
+	}
+        else
+	{
+                printf("线程HumiSensor被创建\n");
+		write_log("线程HumiSensor创建失败\n");
+	}
+
+        if((temp = pthread_create(&thread[1], NULL, AirquaSensor_thread, NULL)) != 0)
+	{
+                printf("线程AirquaSensor创建失败\n");
+		write_log("线程AirquaSensor创建失败\n");
+	}
+        else
+	{
+                printf("线程AirquaSensor被创建\n");
+		write_log("线程AirquaSensor创建失败\n");
+	}		
+
 	if((temp = pthread_create(&thread[2], NULL, mpp_thread, NULL)) != 0)
+	{
                 printf("线程mpp创建失败\n");
+		write_log("线程mpp创建失败\n");
+	}
         else
+	{
                 printf("线程mpp被创建\n");
+		write_log("线程mpp创建失败\n");
+	}
 
 	if((temp = pthread_create(&thread[3], NULL, zigbee_thread, NULL)) != 0)
+	{
                 printf("线程zigbee创建失败\n");
+		write_log("线程zigbee创建失败\n");
+	}
         else
+	{	
                 printf("线程zigbee被创建\n");
+		write_log("线程zigbee创建失败\n");
+	}
 
 	if((temp = pthread_create(&thread[4], NULL, bluetooth_thread, NULL)) != 0)
+	{
                 printf("线程bluetooth创建失败\n");
+		write_log("线程bluetooth创建失败\n");
+	}
         else
+	{
                 printf("线程bluetooth被创建\n");
+		write_log("线程bluetooth创建失败\n");
+	}
 }
 
 void thread_wait(void)
@@ -369,28 +550,48 @@ void thread_wait(void)
         if(thread[0] !=0)
         {    
         	pthread_join(thread[0],NULL);
-                printf("线程1已经结束/n");
+                printf("线程1已经结束\n");
         }
         if(thread[1] !=0) 
         {  
                	pthread_join(thread[1],NULL);
-                printf("线程2已经结束/n");
+                printf("线程2已经结束\n");
         }
 	if(thread[2] !=0) 
         {  
                	pthread_join(thread[2],NULL);
-                printf("线程3已经结束/n");
+                printf("线程3已经结束\n");
         }
 	if(thread[3] !=0) 
         {  
                	pthread_join(thread[3],NULL);
-                printf("线程4已经结束/n");
+                printf("线程4已经结束\n");
         }
 	if(thread[4] !=0) 
         {  
                	pthread_join(thread[4],NULL);
-                printf("线程5已经结束/n");
+                printf("线程5已经结束\n");
         }
+}
+
+void hal_init(void)
+{
+	return;
+}
+
+void para_init(void)
+{
+	strcpy(Equip_Id, "12345678");
+	strcpy(Cloud_Code, "3214"); 
+	strcpy(Username, "myname"); 
+	strcpy(Password, "mypassword");
+	strcpy(Term_Code, "321409000000");
+	Master_Port = 20000;
+	SessionId = 1;
+	TP_Interval = 50;
+	HM_Interval = 50;
+	AIR_Interval = 60;
+	return;
 }
 
 int main()
@@ -398,16 +599,19 @@ int main()
 	struct hostent *host;
 	struct sigaction action;
 	
-	strcpy(Cloud_Code, "3214"); 
-	strcpy(Username, "myname"); 
-	strcpy(Password, "mypassword");
-	strcpy(Term_Code, "321409000000");
-	Master_Port = 20000;
-	SessionId = 1;
+	hal_init();                     //硬件初始化 from_lin
+	para_init();                    //参数初始化
 
+	file_log = fopen("./log","a+");  
+    	if(file_log == NULL)  
+    	{  
+       		perror("errno");  
+    	}  
+	
 	if((host=gethostbyname(domain)) == NULL) 
 	{
-         	herror("gethostbyname出错！");
+		write_log("gethostbyname出错\n");
+         	herror("gethostbyname出错");
          	exit(1);
      	}
         /*用默认属性初始化互斥锁*/
@@ -416,13 +620,14 @@ int main()
 	/* 创建客户端TCP套接口 */
 	bzero(&socket_send_addr, sizeof(socket_send_addr));
 	socket_send_addr.sin_family = AF_INET;
-	socket_send_addr.sin_addr = *((struct in_addr *)host->h_addr);
-//	socket_send_addr.sin_addr.s_addr = inet_addr("120.25.152.19");
+//	socket_send_addr.sin_addr = *((struct in_addr *)host->h_addr);
+	socket_send_addr.sin_addr.s_addr = inet_addr("120.25.152.19");
 //	socket_send_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	socket_send_addr.sin_port = htons(Master_Port);
 
 	send_fd = socket(AF_INET,SOCK_STREAM, 0);
 
+	write_log("login start\n");
 	printf("login start\n");
 	
 	while( tcp_connect() )
@@ -485,7 +690,8 @@ int main()
 
 void handle_pipe(int sig)
 {
-	printf("handle_pipe\n");	
+	printf("handle_pipe\n");
+	write_log("handle_pipe,TCP is disconnect!\n");	
 	ConnectStat = TCP_DISCONNECT;	
 	return;
 }
@@ -495,6 +701,7 @@ void sig_handler( int sig)
 	if(sig == SIGINT)
 	{
 		printf("ctrl+c has been keydown\n");
+		write_log("ctrl+c has been keydown\n");
 		process_logout();
 		close( send_fd );
 		close( server_fd );

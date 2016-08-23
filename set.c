@@ -17,6 +17,7 @@
 #include "set.h"
 #include "collect.h"
 #include "crc32.h"
+#include "fileop.h"
 
 extern uint8_t Cloud_Code[4];                 //云平台厂商代码
 extern uint8_t Username[32];                  //用户名
@@ -51,6 +52,11 @@ extern uint8_t NTP_Enable_Flag;                    //使能标志
 extern uint8_t Algorithm_id;                   //密码算法编号
 extern uint8_t Key[16];                        //密钥
 extern uint32_t SessionId;                    //会话ID
+extern uint32_t TP_Interval;                  //温度采集周期
+extern uint32_t HM_Interval;                  //湿度采集周期
+extern uint32_t AIR_Interval;                 //空气质量采集周期
+extern uint8_t Video_IP[4];                   //视频源地址
+extern uint16_t Video_Port;                   //视频端口号
 
 char buffer[buflen];  //定义数据缓冲区
 
@@ -65,7 +71,7 @@ void process_conn_server(int client_fd)
 		printf("wait read\n");
 		for(size = 0;size == 0 ;size = read(client_fd,buffer,buflen));  
 		head = (message_h *)buffer;
-		printf("read end \n");
+		printf("read end\n");
 		switch( head->Serv_Type )
 		{
 			case SERV_TYPE_PSET:
@@ -85,6 +91,9 @@ void process_conn_server(int client_fd)
 						break;
 					case SERV_CODE_PKEY:
 						set_pkey(client_fd);         //终端密码设置
+						break;
+					case SERV_CODE_SETINTERVAL:
+						set_interval(client_fd);     //传感器采集周期设置
 						break;
 					default:
 						break;
@@ -108,6 +117,9 @@ void process_conn_server(int client_fd)
 						break;
 					case SERV_CODE_PKEY:
 						query_pkey(client_fd);      //终端密码查询
+						break;
+					case SERV_CODE_VIDEOSOURCE:
+						query_videosource(client_fd); //视频源地址查询
 						break;
 					case SERV_CODE_QRYBT:
 						query_bluet(client_fd);      //蓝牙设备查询
@@ -137,6 +149,9 @@ void process_conn_server(int client_fd)
 						break;
 					case SERV_CODE_BTDEL:
 						ctrl_btdel(client_fd);          //删除指定蓝牙设备
+						break;
+					case SERV_CODE_BTCMD:
+						ctrl_btcmd(client_fd);          //向指定蓝牙设备发送命令
 						break;
 					case SERV_CODE_FILERENAME:
 						ctrl_filerename(client_fd);      //重命名文件
@@ -177,6 +192,9 @@ void process_conn_server(int client_fd)
 //基本信息设置
 void set_base(int client_fd)
 {
+	printf("set_base\n");
+	write_log("set_base\n");
+
 	message_base *message = (message_base *)buffer;
 	memcpy( Term_Code, message->Term_Code, sizeof(Term_Code));    //更改终端编码
 	memcpy( Term_Desc, message->Term_Desc, sizeof(Term_Desc));    //更改终端描述
@@ -214,6 +232,9 @@ void set_base(int client_fd)
 //网络参数设置 
 void set_net(int client_fd)
 {
+	printf("set_net\n");
+	write_log("set_net\n");
+
 	message_net *message = (message_net *)buffer;
 	memcpy( Lan_MAC_Addr, message->Lan_MAC_Addr, sizeof(Lan_MAC_Addr));    //更改LAN MAC
 	memcpy( Lan_IP_Addr, message->Lan_IP_Addr, sizeof(Lan_IP_Addr));    //更改LAN IP ADDR
@@ -260,6 +281,9 @@ void set_net(int client_fd)
 //接口参数设置 
 void set_intf(int client_fd)
 {
+	printf("set_intf\n");
+	write_log("set_intf\n");
+
 	message_intf *message = (message_intf *)buffer;
 	memcpy( Master_Ip, message->Master_Ip, sizeof(Master_Ip));    //更改Master_Ip
 	memcpy( Slave_Ip, message->Slave_Ip, sizeof(Slave_Ip));    //更改Slave_Ip
@@ -304,6 +328,8 @@ void set_intf(int client_fd)
 //时钟参数设置 
 void set_ntp(int client_fd)
 {
+	printf("set_ntp\n");
+	write_log("set_ntp\n");
 
 	message_ntp *message = (message_ntp *)buffer;
 	memcpy( NTP_Addr, message->NTP_Addr, sizeof(NTP_Addr));    //更改NTP_Addr
@@ -343,6 +369,9 @@ void set_ntp(int client_fd)
 //终端密码设置 
 void set_pkey(int client_fd)
 {
+	printf("set_pkey\n");
+	write_log("set_pkey\n");
+
 	message_pkey *message = (message_pkey *)buffer;
 	Algorithm_id = message->Algorithm_id;
 	memcpy( Key, message->Key, sizeof(Key));    //更改终端密码
@@ -376,10 +405,52 @@ void set_pkey(int client_fd)
 	return;
 }
 
+//传感器采集周期设置 
+void set_interval(int client_fd)
+{
+	printf("set_interval\n");
+	write_log("set_interval\n");
 
+	message_interval *message = (message_interval *)buffer;
+	TP_Interval = message->TP_Interval;
+	HM_Interval = message->HM_Interval;
+	AIR_Interval = message->AIR_Interval;
+
+	/*确认报文*/
+	message_comm message_resp;
+	message_h message_head;
+
+	memset( &message_resp, 0, sizeof(message_resp));
+	message_resp.Resp_Serv_Type = SERV_TYPE_PSET;
+	message_resp.Resp_Serv_Code = SERV_CODE_SETINTERVAL;
+	message_resp.Error_Code = 0;
+	message_resp.SessionId = SessionId;
+	memset( &message_head, 0, sizeof(message_h));	  //设置消息头
+	strcpy(message_head.Term_Code,Term_Code);
+	message_head.Frame_Head = 0xAAFF;
+	message_head.Major_Ver = 0;
+	message_head.Minor_Ver = 0;
+	message_head.Comm_Type = 0;
+	message_head.Serv_Type = SERV_TYPE_RESP;
+	message_head.Serv_Code = SERV_CODE_RESP;
+	message_head.Flags = 0x20;
+	
+
+	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
+	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
+	message_resp.SessionId = SessionId;
+	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
+	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
+	
+	return;
+}
+
+//基本信息查询
 void query_base(int client_fd)
 {
 	printf("query_base\n");
+	write_log("query_base\n");
+
 	message_base message;
 	memset( &message, 0, sizeof(message));
 
@@ -403,9 +474,13 @@ void query_base(int client_fd)
 	
 	return;
 }
- 
+
+//网络参数查询 
 void query_net(int client_fd)
 {
+	printf("query_net\n");
+	write_log("query_net\n");
+
 	message_net message;
 	memset( &message, 0, sizeof(message));
 
@@ -429,7 +504,7 @@ void query_net(int client_fd)
 	message.message_head.Minor_Ver = 0;
 	message.message_head.Comm_Type = 0;
 	message.message_head.Serv_Type = SERV_TYPE_PQRY;
-	message.message_head.Serv_Code = SERV_CODE_BASE;
+	message.message_head.Serv_Code = SERV_CODE_NET;
 	message.message_head.Flags = 0x20;
 	
 	message.message_head.Total_Len = sizeof(message) - 26;
@@ -438,9 +513,13 @@ void query_net(int client_fd)
 	
 	return;
 }
- 
+
+//接口参数查询 
 void query_intf(int client_fd)
 {
+	printf("query_intf\n");
+	write_log("query_intf\n");
+
 	message_intf message;
 	memset( &message, 0, sizeof(message));
 
@@ -462,7 +541,7 @@ void query_intf(int client_fd)
 	message.message_head.Minor_Ver = 0;
 	message.message_head.Comm_Type = 0;
 	message.message_head.Serv_Type = SERV_TYPE_PQRY;
-	message.message_head.Serv_Code = SERV_CODE_BASE;
+	message.message_head.Serv_Code = SERV_CODE_INTF;
 	message.message_head.Flags = 0x20;
 	
 	message.message_head.Total_Len = sizeof(message) - 26;
@@ -471,9 +550,13 @@ void query_intf(int client_fd)
 	
 	return;
 }
- 
+
+//时钟参数查询 
 void query_ntp(int client_fd)
 {
+	printf("query_ntp\n");
+	write_log("query_ntp\n");
+
 	message_ntp message;
 	memset( &message, 0, sizeof(message));
 
@@ -489,7 +572,7 @@ void query_ntp(int client_fd)
 	message.message_head.Minor_Ver = 0;
 	message.message_head.Comm_Type = 0;
 	message.message_head.Serv_Type = SERV_TYPE_PQRY;
-	message.message_head.Serv_Code = SERV_CODE_BASE;
+	message.message_head.Serv_Code = SERV_CODE_NTP;
 	message.message_head.Flags = 0x20;
 	
 	message.message_head.Total_Len = sizeof(message) - 26;
@@ -501,6 +584,9 @@ void query_ntp(int client_fd)
 
 void query_pkey(int client_fd)
 {
+	printf("query_pkey\n");
+	write_log("query_pkey\n");
+
 	message_pkey message;
 	memset( &message, 0, sizeof(message));
 
@@ -514,7 +600,7 @@ void query_pkey(int client_fd)
 	message.message_head.Minor_Ver = 0;
 	message.message_head.Comm_Type = 0;
 	message.message_head.Serv_Type = SERV_TYPE_PQRY;
-	message.message_head.Serv_Code = SERV_CODE_BASE;
+	message.message_head.Serv_Code = SERV_CODE_PKEY;
 	message.message_head.Flags = 0x20;
 	
 	message.message_head.Total_Len = sizeof(message) - 26;
@@ -523,14 +609,47 @@ void query_pkey(int client_fd)
 	
 	return;
 }
+
+void query_videosource(int client_fd)
+{
+	printf("query_videosource\n");
+	write_log("query_videosource\n");
+
+	message_videosource message;
+	memset( &message, 0, sizeof(message));
+
+	message.Source_Port = Video_Port;
+	memcpy( message.Source_IP, Video_IP, sizeof(Video_IP));    //终端密码
+
+	message.SessionId = SessionId;
+	strcpy(message.message_head.Term_Code,Term_Code);
+	message.message_head.Frame_Head = 0xAAFF;
+	message.message_head.Major_Ver = 0;
+	message.message_head.Minor_Ver = 0;
+	message.message_head.Comm_Type = 0;
+	message.message_head.Serv_Type = SERV_TYPE_PQRY;
+	message.message_head.Serv_Code = SERV_CODE_VIDEOSOURCE;
+	message.message_head.Flags = 0x20;
+	
+	message.message_head.Total_Len = sizeof(message) - 26;
+	message.message_head.CRC32 = crc32((uint8_t *)&message.message_head.Seq_Id, sizeof(message)-8-26);
+	write(client_fd, &message, sizeof(message)-26); //发送消息
+
+	return;
+}
  
 void query_bluet(int client_fd)
 {
+	printf("query_bluet\n");
+	write_log("query_bluet\n");
 
+	return;
 }
   
 void ctrl_reset(int client_fd)
 {
+	printf("ctrl_reset\n");
+	write_log("ctrl_reset\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -564,6 +683,8 @@ void ctrl_reset(int client_fd)
  
 void ctrl_dataclr(int client_fd)
 {
+	printf("ctrl_dataclr\n");
+	write_log("ctrl_dataclr\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -597,6 +718,8 @@ void ctrl_dataclr(int client_fd)
  
 void ctrl_restore(int client_fd)
 {
+	printf("ctrl_restore\n");
+	write_log("ctrl_restore\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -630,6 +753,8 @@ void ctrl_restore(int client_fd)
  
 void ctrl_ajusttime(int client_fd)
 {
+	printf("ctrl_ajusttime\n");
+	write_log("ctrl_ajusttime\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -663,6 +788,8 @@ void ctrl_ajusttime(int client_fd)
 
 void ctrl_btcon(int client_fd)
 {
+	printf("ctrl_btcon\n");
+	write_log("ctrl_btcon\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -696,6 +823,9 @@ void ctrl_btcon(int client_fd)
 
 void ctrl_btdel(int client_fd)
 {
+	printf("ctrl_btdel\n");
+	write_log("ctrl_btdel\n");
+
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -726,9 +856,46 @@ void ctrl_btdel(int client_fd)
 	
 	return;
 }
+
+void ctrl_btcmd(int client_fd)
+{
+	printf("ctrl_btcmd\n");
+	write_log("ctrl_btcmd\n");
+
+	/*确认报文*/
+	message_comm message_resp;
+	message_h message_head;
+
+	memset( &message_resp, 0, sizeof(message_resp));
+	message_resp.Resp_Serv_Type = SERV_TYPE_CTRL;
+	message_resp.Resp_Serv_Code = SERV_CODE_BTCMD;
+	message_resp.Error_Code = 0;
+	message_resp.SessionId = SessionId;
+	strcpy( message_resp.Password, Password );
+	memset( &message_head, 0, sizeof(message_h));	  //设置消息头
+	strcpy(message_head.Term_Code,Term_Code);
+	message_head.Frame_Head = 0xAAFF;
+	message_head.Major_Ver = 0;
+	message_head.Minor_Ver = 0;
+	message_head.Comm_Type = 0;
+	message_head.Serv_Type = SERV_TYPE_RESP;
+	message_head.Serv_Code = SERV_CODE_RESP;
+	message_head.Flags = 0x20;
+	
+
+	memcpy(&message_resp.message_head, &message_head, sizeof(message_h));
+	message_resp.message_head.Total_Len = sizeof(message_resp) - 26;
+	message_resp.SessionId = SessionId;
+	message_resp.message_head.CRC32 = crc32((uint8_t *)&message_resp.message_head.Seq_Id, sizeof(message_resp)-8-26);
+	write(client_fd, &message_resp, sizeof(message_resp)-26); //发送消息
+	
+	return;
+}
  
 void ctrl_filerename(int client_fd)
 {
+	printf("ctrl_filerename\n");
+	write_log("ctrl_filerename\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -762,6 +929,8 @@ void ctrl_filerename(int client_fd)
 
 void ctrl_fileop(int client_fd)
 {
+	printf("ctrl_fileop\n");
+	write_log("ctrl_fileop\n");
 
 	/*确认报文*/
 	message_comm message_resp;
@@ -795,17 +964,26 @@ void ctrl_fileop(int client_fd)
 
 void ctrl_qryfilelist(int client_fd)
 {
+	printf("ctrl_qryfilelist\n");
+	write_log("ctrl_qryfilelist\n");
 
+	return;
 }
  
 void query_ver(int client_fd)
 {
+	printf("query_ver\n");
+	write_log("query_ver\n");
 
+	return;
 }
   
 void query_time(int client_fd)
 {
+	printf("query_time\n");
+	write_log("query_time\n");
 
+	return;
 }
  
  					

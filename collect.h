@@ -11,6 +11,14 @@
 #define TRUE 1
 #endif
 
+#ifndef SUCCESS
+#define SUCCESS 0
+#endif
+
+#ifndef FAILED
+#define FAILED -1
+#endif
+
 #pragma pack(1)
 
 typedef struct _message_h {           //消息头结构体
@@ -123,17 +131,35 @@ uint8_t Timestamp[6];
 int Expire_time; 
 }message_pkey;     
 
-typedef struct _message_sensor {        //传感器数据上报结构体
+typedef struct _message_interval {      //传感器采集周期结构体
 message_h message_head;
-uint8_t Equip_Id[16];                   //设备ID               
-int16_t Temp;                           //温度
-int16_t Humi;                           //湿度
-int16_t Airqua;                         //空气质量
+uint32_t TP_Interval;                   //温度采集周期
+uint32_t HM_Interval;                   //湿度采集周期
+uint32_t AIR_Interval;                  //空气质量采集周期
 uint32_t SessionId;
 uint8_t Password[16];
 uint8_t Timestamp[6];
 int Expire_time; 
-}message_sensor;                         
+}message_interval;     
+
+typedef struct _message_videosource {      //视频源结构体
+message_h message_head;
+uint8_t Source_IP[4];                   //视频源地址
+uint16_t Source_Port;                   //视频源端口号
+uint32_t SessionId;
+uint8_t Password[16];
+uint8_t Timestamp[6];
+int Expire_time; 
+}message_videosource;  
+
+typedef struct _message_sensor {        //传感器数据上报结构体
+message_h message_head;
+uint8_t Equip_Id[16];                   //设备ID               
+int16_t Data;                           //温度/湿度/空气质量
+uint8_t Type;                           //0：温度；1：湿度；2：空气质量
+uint32_t SessionId;
+}message_sensor;     
+                    
 
 #define SERV_TYPE_RESP     1              //通用报文类型
 #define SERV_CODE_RESP     1              //通用报文代码
@@ -149,8 +175,11 @@ int Expire_time;
 #define SERV_CODE_NET      2              //网络参数
 #define SERV_CODE_INTF     3              //接口参数
 #define SERV_CODE_NTP      4              //时钟参数
-#define SERV_CODE_PKEY     5              //终端密码
-#define SERV_CODE_QRYBT    6              //蓝牙设备查询
+#define SERV_CODE_FTP      5              //!!!!!!!
+#define SERV_CODE_PKEY     6              //终端密码
+#define SERV_CODE_SETINTERVAL    7        //传感器采集周期设置
+#define SERV_CODE_VIDEOSOURCE    7        //视频源地址查询
+#define SERV_CODE_QRYBT    9              //可见未知蓝牙设备列表查询
 
 #define SERV_TYPE_CTRL      5             //命令控制
 #define SERV_CODE_RESET     1             //系统复位
@@ -159,16 +188,18 @@ int Expire_time;
 #define SERV_CODE_AJUSTTIME 4             //时间校准
 #define SERV_CODE_BTCON     5             //连接指定蓝牙设备
 #define SERV_CODE_BTDEL     6             //删除指定蓝牙设备
-#define SERV_CODE_FILERENAME  7           //重命名文件
-#define SERV_CODE_FILEOP    8             //操作文件
-#define SERV_CODE_QRYFILELIST  9          //查询文件列表
+#define SERV_CODE_BTCMD     7             //向指定蓝牙设备发送指令
+#define SERV_CODE_FILERENAME   8          //重命名文件
+#define SERV_CODE_FILEOP       9          //操作文件
+#define SERV_CODE_QRYFILELIST  10         //查询文件列表
 
 #define SERV_TYPE_DQRY      6             //数据查询
-#define SERV_CODE_VER       1             //版本及状态信息
-#define SERV_CODE_TIME      2             //当前日期及时间
-#define SERV_CODE_SENS      3             //传感器状态
-#define SERV_CODE_EXTSENS   4             //蓝牙传感设备数据
-#define SERV_CODE_REGBT     5        	  //注册蓝牙设备
+#define SERV_CODE_SENS      1             //传感器状态
+#define SERV_CODE_VER       2             //版本及状态信息
+#define SERV_CODE_TIME      3             //当前日期及时间
+#define SERV_CODE_EXTSENS   5             //蓝牙传感设备数据
+#define SERV_CODE_REGBT     6        	  //注册蓝牙设备
+#define SERV_CODE_BT        7        	  //蓝牙设备上线下线通知
 
 #define SERV_TYPE_FILE      7      	  //文件传输
 #define SERV_CODE_FILE_UPREQ       1      //文件上传请求
